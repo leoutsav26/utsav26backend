@@ -116,4 +116,7 @@ app.listen(PORT, async () => {
   }
 });
 
-app.use('/leaderboard', require('./routes/leaderboardRoutes'));
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
+
+app.use('/api/leaderboard', leaderboardRoutes);
+
