@@ -115,3 +115,5 @@ app.listen(PORT, async () => {
     console.error('❌ Database connection failed:', err.message);
   }
 });
+
+app.use('/api/leaderboard', require('./routes/leaderboardRoutes'));
