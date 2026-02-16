@@ -116,4 +116,4 @@ app.listen(PORT, async () => {
   }
 });
 
-app.use('/api/leaderboard', require('./routes/leaderboardRoutes'));
+app.use('/leaderboard', require('./routes/leaderboardRoutes'));
