@@ -117,4 +117,35 @@ async function me(req, res) {
   }
 }
 
-module.exports = { login, register, me, toUserRow };
+/** Admin only: create admin or coordinator. Password = "leo" + first 4 letters of name. */
+async function createUser(req, res) {
+  try {
+    const { email, name, rollNo, phone, role } = req.body || {};
+    const em = (email || '').trim().toLowerCase();
+    const nameTrim = (name || '').trim();
+    if (!em || !nameTrim) return res.status(400).json({ message: 'email and name required' });
+    if (!['admin', 'coordinator'].includes(role)) return res.status(400).json({ message: 'role must be admin or coordinator' });
+
+    const existing = await pool.query('SELECT id FROM users WHERE LOWER(email) = $1 AND role = $2', [em, role]);
+    if (existing.rows.length > 0) return res.status(409).json({ message: 'A user with this email and role already exists' });
+
+    const first4 = nameTrim.slice(0, 4);
+    const plainPassword = 'leo' + first4;
+    const password_hash = await bcrypt.hash(plainPassword, 10);
+
+    const status = role === 'coordinator' ? 'approved' : null;
+    const r = await pool.query(
+      `INSERT INTO users (email, password_hash, role, name, roll_no, phone, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, email, role, name, leo_id, roll_no, phone, status, created_at`,
+      [em, password_hash, role, nameTrim, (rollNo != null && rollNo !== '') ? String(rollNo).trim() : null, (phone != null && phone !== '') ? String(phone).trim() : null, status]
+    );
+    const user = toUserRow(r.rows[0]);
+    res.status(201).json({ user, temporaryPassword: plainPassword });
+  } catch (err) {
+    console.error('auth createUser', err);
+    res.status(500).json({ message: err.message || 'Failed to create user' });
+  }
+}
+
+module.exports = { login, register, me, toUserRow, createUser };

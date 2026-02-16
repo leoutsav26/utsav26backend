@@ -20,8 +20,15 @@ pool.on('connect', () => {
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Unexpected DB pool error:', err);
+  if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+    console.error('❌ Database unreachable (check internet and Supabase):', err.message);
+  } else {
+    console.error('❌ DB pool error:', err.message);
+  }
 });
-console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
+const url = process.env.DATABASE_URL || '';
+const safeUrl = url.replace(/:[^:@]+@/, ':****@');
+console.log('DATABASE_URL:', safeUrl);
 
 module.exports = pool;

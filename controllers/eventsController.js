@@ -1,4 +1,5 @@
-const pool = require('../config/db');   // ✅ FIXED (no curly braces)
+const pool = require('../config/db');
+const { handleDbError } = require('../utils/dbErrors');
 
 function toEventRow(row) {
   if (!row) return null;
@@ -18,14 +19,30 @@ function toEventRow(row) {
   };
 }
 
+const COLUMN_DELETED_AT = '42703'; // PostgreSQL: undefined_column
+
 async function getAll(req, res) {
   try {
-    const r = await pool.query(
-      'SELECT id, title, description, date, time, venue, category, status, cost, rules, team_size, created_at FROM events ORDER BY created_at DESC'
-    );
+    let r = await pool.query(
+      `SELECT id, title, description, date, time, venue, category, status, cost, rules, team_size, created_at
+       FROM events
+       WHERE deleted_at IS NULL
+       ORDER BY created_at DESC`
+    ).catch((err) => {
+      if (err.code === COLUMN_DELETED_AT) return null;
+      throw err;
+    });
+    if (!r) {
+      r = await pool.query(
+        `SELECT id, title, description, date, time, venue, category, status, cost, rules, team_size, created_at
+         FROM events
+         ORDER BY created_at DESC`
+      );
+    }
     res.json(r.rows.map(toEventRow));
   } catch (err) {
-    console.error('events getAll', err);
+    if (handleDbError(err, res, 'events getAll')) return;
+    console.error('events getAll', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch events' });
   }
 }
@@ -33,15 +50,25 @@ async function getAll(req, res) {
 async function getById(req, res) {
   try {
     const { id } = req.params;
-    const r = await pool.query(
-      'SELECT id, title, description, date, time, venue, category, status, cost, rules, team_size, created_at FROM events WHERE id = $1',
+    let r = await pool.query(
+      'SELECT id, title, description, date, time, venue, category, status, cost, rules, team_size, created_at FROM events WHERE id = $1 AND deleted_at IS NULL',
       [id]
-    );
+    ).catch((err) => {
+      if (err.code === COLUMN_DELETED_AT) return null;
+      throw err;
+    });
+    if (!r) {
+      r = await pool.query(
+        'SELECT id, title, description, date, time, venue, category, status, cost, rules, team_size, created_at FROM events WHERE id = $1',
+        [id]
+      );
+    }
     const row = r.rows[0];
     if (!row) return res.status(404).json({ message: 'Event not found' });
     res.json(toEventRow(row));
   } catch (err) {
-    console.error('events getById', err);
+    if (handleDbError(err, res, 'events getById')) return;
+    console.error('events getById', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch event' });
   }
 }
@@ -71,7 +98,8 @@ async function create(req, res) {
 
     res.status(201).json(toEventRow(r.rows[0]));
   } catch (err) {
-    console.error('events create', err);
+    if (handleDbError(err, res, 'events create')) return;
+    console.error('events create', err.message);
     res.status(500).json({ message: err.message || 'Failed to create event' });
   }
 }
@@ -109,7 +137,8 @@ async function update(req, res) {
 
     res.json(toEventRow(row));
   } catch (err) {
-    console.error('events update', err);
+    if (handleDbError(err, res, 'events update')) return;
+    console.error('events update', err.message);
     res.status(500).json({ message: err.message || 'Failed to update event' });
   }
 }
@@ -133,7 +162,8 @@ async function updateStatus(req, res) {
 
     res.json(toEventRow(row));
   } catch (err) {
-    console.error('events updateStatus', err);
+    if (handleDbError(err, res, 'events updateStatus')) return;
+    console.error('events updateStatus', err.message);
     res.status(500).json({ message: err.message || 'Failed to update status' });
   }
 }
@@ -141,15 +171,45 @@ async function updateStatus(req, res) {
 async function getPasses(req, res) {
   try {
     const { eventId } = req.params;
-    const eventRow = await pool.query('SELECT id FROM events WHERE id=$1', [eventId]);
+    let eventRow = await pool.query('SELECT id FROM events WHERE id=$1 AND deleted_at IS NULL', [eventId]).catch((err) => {
+      if (err.code === COLUMN_DELETED_AT) return null;
+      throw err;
+    });
+    if (!eventRow) {
+      eventRow = await pool.query('SELECT id FROM events WHERE id=$1', [eventId]);
+    }
 
     if (!eventRow.rows[0])
       return res.status(404).json({ message: 'Event not found' });
 
     res.json([]);
   } catch (err) {
-    console.error('events getPasses', err);
+    if (handleDbError(err, res, 'events getPasses')) return;
+    console.error('events getPasses', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch passes' });
+  }
+}
+
+/** Soft-delete event: set deleted_at so participations/payments data is preserved. */
+async function softDelete(req, res) {
+  try {
+    const { id } = req.params;
+    const r = await pool.query(
+      'UPDATE events SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id, title',
+      [id]
+    );
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ message: 'Event not found or already deleted' });
+    res.json({ message: 'Event deleted', id: row.id });
+  } catch (err) {
+    if (handleDbError(err, res, 'events softDelete')) return;
+    if (err.code === COLUMN_DELETED_AT) {
+      return res.status(503).json({
+        message: 'Soft-delete not available. Add column first: ALTER TABLE events ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;'
+      });
+    }
+    console.error('events softDelete', err.message);
+    res.status(500).json({ message: err.message || 'Failed to delete event' });
   }
 }
 
@@ -159,5 +219,6 @@ module.exports = {
   create,
   update,
   updateStatus,
-  getPasses
+  getPasses,
+  softDelete
 };

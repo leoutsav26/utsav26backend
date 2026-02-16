@@ -87,3 +87,6 @@ CREATE INDEX IF NOT EXISTS idx_event_coordinators_event ON event_coordinators(ev
 CREATE INDEX IF NOT EXISTS idx_event_coordinators_user ON event_coordinators(user_id);
 CREATE INDEX IF NOT EXISTS idx_leaderboard_event ON leaderboard(event_id);
 CREATE INDEX IF NOT EXISTS idx_winners_event ON winners(event_id);
+
+-- Soft-delete for events (keeps participation/payment/leaderboard data; run if table already exists)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { toUserRow } = require('./authController');
+const { handleDbError } = require('../utils/dbErrors');
 
 function toCoordAssignmentRow(row) {
   if (!row) return null;
@@ -25,20 +26,38 @@ async function getCoordinatorsByEvent(req, res) {
     );
     res.json(r.rows.map(toCoordAssignmentRow));
   } catch (err) {
-    console.error('coordinators getByEvent', err);
+    if (handleDbError(err, res, 'coordinators getByEvent')) return;
+    console.error('coordinators getByEvent', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch coordinators' });
   }
 }
+
+const PG_UNDEFINED_COLUMN = '42703';
 
 async function getMyEventIds(req, res) {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: 'Authorization required' });
-    const r = await pool.query('SELECT event_id FROM event_coordinators WHERE user_id = $1', [userId]);
+    let r = await pool.query(
+      `SELECT ec.event_id FROM event_coordinators ec
+       INNER JOIN events e ON e.id = ec.event_id AND (e.deleted_at IS NULL)
+       WHERE ec.user_id = $1`,
+      [userId]
+    ).catch((err) => {
+      if (err.code === PG_UNDEFINED_COLUMN) return null;
+      throw err;
+    });
+    if (!r) {
+      r = await pool.query(
+        'SELECT event_id FROM event_coordinators WHERE user_id = $1',
+        [userId]
+      );
+    }
     const eventIds = r.rows.map((row) => row.event_id);
     res.json({ eventIds });
   } catch (err) {
-    console.error('coordinators getMyEventIds', err);
+    if (handleDbError(err, res, 'coordinators getMyEventIds')) return;
+    console.error('coordinators getMyEventIds', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch my events' });
   }
 }
@@ -63,7 +82,8 @@ async function join(req, res) {
     if (!row) return res.status(201).json({ eventId, userId });
     res.status(201).json({ id: row.id, eventId: row.event_id, userId: row.user_id });
   } catch (err) {
-    console.error('coordinators join', err);
+    if (handleDbError(err, res, 'coordinators join')) return;
+    console.error('coordinators join', err.message);
     res.status(500).json({ message: err.message || 'Failed to join event' });
   }
 }
@@ -76,7 +96,8 @@ async function leaveById(req, res) {
     if (r.rowCount === 0) return res.status(404).json({ message: 'Assignment not found' });
     res.status(204).send();
   } catch (err) {
-    console.error('coordinators leaveById', err);
+    if (handleDbError(err, res, 'coordinators leaveById')) return;
+    console.error('coordinators leaveById', err.message);
     res.status(500).json({ message: err.message || 'Failed to leave event' });
   }
 }
@@ -90,7 +111,8 @@ async function leaveByEventId(req, res) {
     if (r.rowCount === 0) return res.status(404).json({ message: 'Assignment not found' });
     res.status(204).send();
   } catch (err) {
-    console.error('coordinators leaveByEventId', err);
+    if (handleDbError(err, res, 'coordinators leaveByEventId')) return;
+    console.error('coordinators leaveByEventId', err.message);
     res.status(500).json({ message: err.message || 'Failed to leave event' });
   }
 }
@@ -102,7 +124,8 @@ async function listCoordinators(req, res) {
     );
     res.json(r.rows.map(toUserRow));
   } catch (err) {
-    console.error('coordinators list', err);
+    if (handleDbError(err, res, 'coordinators list')) return;
+    console.error('coordinators list', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch coordinators' });
   }
 }
@@ -120,7 +143,8 @@ async function updateCoordinatorStatus(req, res) {
     if (!row) return res.status(404).json({ message: 'Coordinator not found' });
     res.json(toUserRow(row));
   } catch (err) {
-    console.error('coordinators updateStatus', err);
+    if (handleDbError(err, res, 'coordinators updateStatus')) return;
+    console.error('coordinators updateStatus', err.message);
     res.status(500).json({ message: err.message || 'Failed to update status' });
   }
 }
