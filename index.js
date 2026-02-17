@@ -12,6 +12,7 @@ const paymentsRoutes = require('./routes/paymentsRoutes');
 const coordinatorsRoutes = require('./routes/coordinatorsRoutes');
 const usersRoutes = require('./routes/usersRoutes');
 const leaderboardRoutes = require('./routes/leaderboardRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 const PORT = process.env.PORT || 5000;     // ⭐ PORT
 
@@ -86,6 +87,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/event-coordinators', coordinatorsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 /* ----------------------------
    404 HANDLER

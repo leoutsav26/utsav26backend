@@ -99,3 +99,9 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
 
 -- Who entered/updated each score (for report: "coordinators who entered scores")
 ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS entered_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+-- Site visit counter (one row per day; admin can see total and daily breakdown)
+CREATE TABLE IF NOT EXISTS site_visits (
+  visit_date DATE PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0
+);
