@@ -11,6 +11,7 @@ const participationsRoutes = require('./routes/participationsRoutes');
 const paymentsRoutes = require('./routes/paymentsRoutes');
 const coordinatorsRoutes = require('./routes/coordinatorsRoutes');
 const usersRoutes = require('./routes/usersRoutes');
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
 
 const PORT = process.env.PORT || 5000;     // ⭐ PORT
 
@@ -84,6 +85,7 @@ app.use('/api/participations', participationsRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/event-coordinators', coordinatorsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 /* ----------------------------
    404 HANDLER
@@ -115,8 +117,3 @@ app.listen(PORT, async () => {
     console.error('❌ Database connection failed:', err.message);
   }
 });
-
-const leaderboardRoutes = require('./routes/leaderboardRoutes');
-
-app.use('/api/leaderboard', leaderboardRoutes);
-

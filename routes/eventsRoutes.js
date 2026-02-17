@@ -3,13 +3,14 @@ const router = express.Router();
 const { getAll, getById, create, update, updateStatus, getPasses, softDelete } = require('../controllers/eventsController');
 const { getByEvent } = require('../controllers/participationsController');
 const { getCoordinatorsByEvent } = require('../controllers/coordinatorsController');
-const { getLeaderboard, upsertScore, getWinners, completeEvent } = require('../controllers/leaderboardController');
+const { getLeaderboard, upsertScore, getWinners, completeEvent, getScoreEnteredBy } = require('../controllers/leaderboardController');
 const { authMiddleware, requireRole } = require('../middleware/authMiddleware');
 
 router.get('/', getAll);
 router.get('/:eventId/participations', authMiddleware, getByEvent);
 router.get('/:eventId/coordinators', getCoordinatorsByEvent);
 router.get('/:eventId/leaderboard', authMiddleware, getLeaderboard);
+router.get('/:eventId/score-entered-by', authMiddleware, getScoreEnteredBy);
 router.patch('/:eventId/leaderboard', authMiddleware, requireRole('admin', 'coordinator'), upsertScore);
 router.get('/:eventId/winners', authMiddleware, getWinners);
 router.patch('/:eventId/complete', authMiddleware, requireRole('admin'), completeEvent);

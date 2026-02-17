@@ -1,5 +1,11 @@
 -- LEO Club Event Portal - PostgreSQL schema
--- Run this once to create tables (e.g. psql $DATABASE_URL -f schema.sql)
+--
+-- New database: run this entire file once (e.g. psql $DATABASE_URL -f schema.sql).
+--
+-- Existing database: you do NOT need to run the whole file again. In your DB SQL
+-- query box (e.g. Supabase SQL Editor), run only the ALTER lines you need:
+--   ALTER TABLE events ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+--   ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS entered_by UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -90,3 +96,6 @@ CREATE INDEX IF NOT EXISTS idx_winners_event ON winners(event_id);
 
 -- Soft-delete for events (keeps participation/payment/leaderboard data; run if table already exists)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+
+-- Who entered/updated each score (for report: "coordinators who entered scores")
+ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS entered_by UUID REFERENCES users(id) ON DELETE SET NULL;

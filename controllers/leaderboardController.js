@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { handleDbError } = require('../utils/dbErrors');
 
 function toLeaderboardRow(row) {
   if (!row) return null;
@@ -24,7 +25,8 @@ async function getLeaderboard(req, res) {
     );
     res.json(r.rows.map(toLeaderboardRow));
   } catch (err) {
-    console.error('leaderboard get', err);
+    if (handleDbError(err, res, 'leaderboard get')) return;
+    console.error('leaderboard get', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch leaderboard' });
   }
 }
@@ -33,22 +35,34 @@ async function upsertScore(req, res) {
   try {
     const { eventId } = req.params;
     const { participantId, score } = req.body || {};
+    const enteredBy = req.user?.id || null;
     if (!participantId || score === undefined) return res.status(400).json({ message: 'participantId and score required' });
     const numScore = Number(score);
     if (isNaN(numScore)) return res.status(400).json({ message: 'score must be a number' });
 
-    await pool.query(
-      `INSERT INTO leaderboard (event_id, participant_id, score) VALUES ($1, $2, $3)
-       ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3`,
-      [eventId, participantId, numScore]
-    );
+    try {
+      await pool.query(
+        `INSERT INTO leaderboard (event_id, participant_id, score, entered_by) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3, entered_by = $4`,
+        [eventId, participantId, numScore, enteredBy]
+      );
+    } catch (e) {
+      if (e.code === '42703') {
+        await pool.query(
+          `INSERT INTO leaderboard (event_id, participant_id, score) VALUES ($1, $2, $3)
+           ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3`,
+          [eventId, participantId, numScore]
+        );
+      } else throw e;
+    }
     const r = await pool.query(
       `SELECT l.participant_id, l.score, u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
       [eventId]
     );
     res.json(r.rows.map(toLeaderboardRow));
   } catch (err) {
-    console.error('leaderboard upsert', err);
+    if (handleDbError(err, res, 'leaderboard upsert')) return;
+    console.error('leaderboard upsert', err.message);
     res.status(500).json({ message: err.message || 'Failed to update leaderboard' });
   }
 }
@@ -62,7 +76,8 @@ async function getWinners(req, res) {
     );
     res.json(r.rows.map((row) => row.participant_id));
   } catch (err) {
-    console.error('leaderboard getWinners', err);
+    if (handleDbError(err, res, 'leaderboard getWinners')) return;
+    console.error('leaderboard getWinners', err.message);
     res.status(500).json({ message: err.message || 'Failed to fetch winners' });
   }
 }
@@ -99,9 +114,38 @@ async function completeEvent(req, res) {
       createdAt: row.created_at,
     });
   } catch (err) {
-    console.error('leaderboard completeEvent', err);
+    if (handleDbError(err, res, 'leaderboard completeEvent')) return;
+    console.error('leaderboard completeEvent', err.message);
     res.status(500).json({ message: err.message || 'Failed to complete event' });
   }
 }
 
-module.exports = { getLeaderboard, upsertScore, getWinners, completeEvent };
+async function getScoreEnteredBy(req, res) {
+  try {
+    const { eventId } = req.params;
+    let r;
+    try {
+      r = await pool.query(
+        `SELECT DISTINCT u.id, u.name FROM leaderboard l
+         JOIN users u ON u.id = l.entered_by
+         WHERE l.event_id = $1 AND l.entered_by IS NOT NULL
+         ORDER BY u.name`,
+        [eventId]
+      );
+    } catch (e) {
+      if (e.code === '42703') {
+        console.log('Column entered_by does not exist yet. Run: ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS entered_by UUID REFERENCES users(id) ON DELETE SET NULL;');
+        return res.json([]);
+      }
+      throw e;
+    }
+    console.log(`Found ${r.rows.length} coordinators who entered scores for event ${eventId}`);
+    res.json(r.rows.map((row) => ({ id: row.id, name: row.name || 'Unknown' })));
+  } catch (err) {
+    if (handleDbError(err, res, 'leaderboard getScoreEnteredBy')) return;
+    console.error('leaderboard getScoreEnteredBy', err.message);
+    res.status(500).json({ message: err.message || 'Failed to fetch score entered by' });
+  }
+}
+
+module.exports = { getLeaderboard, upsertScore, getWinners, completeEvent, getScoreEnteredBy };
