@@ -8,7 +8,6 @@ function toLeaderboardRow(row) {
     name: row.name ?? undefined,
     leoId: row.leo_id ?? undefined,
     rollNo: row.roll_no ?? undefined,
-    teamNo: row.team_no ?? undefined,
     score: Number(row.score) ?? 0,
   };
 }
@@ -17,7 +16,7 @@ async function getLeaderboard(req, res) {
   try {
     const { eventId } = req.params;
     const r = await pool.query(
-      `SELECT l.participant_id, l.score, l.team_no, u.name, u.leo_id, u.roll_no
+      `SELECT l.participant_id, l.score, u.name, u.leo_id, u.roll_no
        FROM leaderboard l
        JOIN users u ON u.id = l.participant_id
        WHERE l.event_id = $1
@@ -35,7 +34,7 @@ async function getLeaderboard(req, res) {
 async function upsertScore(req, res) {
   try {
     const { eventId } = req.params;
-    const { participantId, score, teamNo } = req.body || {};
+    const { participantId, score } = req.body || {};
     const enteredBy = req.user?.id || null;
     if (!participantId || score === undefined) return res.status(400).json({ message: 'participantId and score required' });
     const numScore = Number(score);
@@ -43,24 +42,21 @@ async function upsertScore(req, res) {
 
     try {
       await pool.query(
-        `INSERT INTO leaderboard (event_id, participant_id, score, team_no, entered_by)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (event_id, participant_id)
-        DO UPDATE SET score = $3, team_no = $4, entered_by = $5`,
-        [eventId, participantId, numScore, teamNo || null, enteredBy]
+        `INSERT INTO leaderboard (event_id, participant_id, score, entered_by) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3, entered_by = $4`,
+        [eventId, participantId, numScore, enteredBy]
       );
     } catch (e) {
       if (e.code === '42703') {
         await pool.query(
-          `INSERT INTO leaderboard (event_id, participant_id, score, team_no)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (...) DO UPDATE SET score = $3, team_no = $4`,
-          [eventId, participantId, numScore, teamNo || null]
+          `INSERT INTO leaderboard (event_id, participant_id, score) VALUES ($1, $2, $3)
+           ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3`,
+          [eventId, participantId, numScore]
         );
       } else throw e;
     }
     const r = await pool.query(
-      `SELECT l.participant_id, l.score, l.team_no, u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
+      `SELECT l.participant_id, l.score, u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
       [eventId]
     );
     res.json(r.rows.map(toLeaderboardRow));
@@ -152,4 +148,4 @@ async function getScoreEnteredBy(req, res) {
   }
 }
 
-module.exports = { getLeaderboard, upsertScore, getWinners, completeEvent, getScoreEnteredBy }; 
+module.exports = { getLeaderboard, upsertScore, getWinners, completeEvent, getScoreEnteredBy }; this is the leaderboard controller and my coordinator dashboard is import React, { useMemo, useState, useEffect } from "react";
