@@ -49,6 +49,7 @@ async function getLeaderboard(req, res) {
 
 async function upsertScore(req, res) {
   try {
+    console.log("BODY:", req.body);
     const { eventId } = req.params;
     const { participantId, score, teamNo } = req.body || {};
     const enteredBy = req.user?.id || null;
