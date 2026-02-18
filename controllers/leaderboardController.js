@@ -60,7 +60,7 @@ async function upsertScore(req, res) {
       } else throw e;
     }
     const r = await pool.query(
-      `SELECT l.participant_id, l.score, l.team_no u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
+      `SELECT l.participant_id, l.score, l.team_no, u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
       [eventId]
     );
     res.json(r.rows.map(toLeaderboardRow));
