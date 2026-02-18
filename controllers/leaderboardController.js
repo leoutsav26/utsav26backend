@@ -48,12 +48,20 @@ async function getLeaderboard(req, res) {
 /* ================= UPSERT SCORE WITH TEAM NO ================= */
 
 async function upsertScore(req, res) {
+  
+
   try {
     console.log("BODY:", req.body);
     const { eventId } = req.params;
     const { participantId, score, teamNo } = req.body || {};
     const enteredBy = req.user?.id || null;
-
+    console.log("UPSERT VALUES:", {
+      eventId,
+      participantId,
+      numScore,
+      teamNo,
+      enteredBy
+    });
     if (!participantId || score === undefined) {
       return res.status(400).json({
         message: 'participantId and score required'
