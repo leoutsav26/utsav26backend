@@ -8,6 +8,7 @@ function toLeaderboardRow(row) {
     name: row.name ?? undefined,
     leoId: row.leo_id ?? undefined,
     rollNo: row.roll_no ?? undefined,
+    teamNo: row.team_no ?? undefined,
     score: Number(row.score) ?? 0,
   };
 }
@@ -15,14 +16,16 @@ function toLeaderboardRow(row) {
 async function getLeaderboard(req, res) {
   try {
     const { eventId } = req.params;
+
     const r = await pool.query(
-      `SELECT l.participant_id, l.score, u.name, u.leo_id, u.roll_no
+      `SELECT l.participant_id, l.score, l.team_no, u.name, u.leo_id, u.roll_no
        FROM leaderboard l
        JOIN users u ON u.id = l.participant_id
        WHERE l.event_id = $1
        ORDER BY l.score DESC`,
       [eventId]
     );
+
     res.json(r.rows.map(toLeaderboardRow));
   } catch (err) {
     if (handleDbError(err, res, 'leaderboard get')) return;
@@ -34,31 +37,48 @@ async function getLeaderboard(req, res) {
 async function upsertScore(req, res) {
   try {
     const { eventId } = req.params;
-    const { participantId, score } = req.body || {};
+    const { participantId, score, teamNo } = req.body || {};
     const enteredBy = req.user?.id || null;
-    if (!participantId || score === undefined) return res.status(400).json({ message: 'participantId and score required' });
+
+    if (!participantId || score === undefined)
+      return res.status(400).json({ message: 'participantId and score required' });
+
     const numScore = Number(score);
-    if (isNaN(numScore)) return res.status(400).json({ message: 'score must be a number' });
+    if (isNaN(numScore))
+      return res.status(400).json({ message: 'score must be a number' });
 
     try {
+      // ✅ Main query (with team_no and entered_by)
       await pool.query(
-        `INSERT INTO leaderboard (event_id, participant_id, score, entered_by) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3, entered_by = $4`,
-        [eventId, participantId, numScore, enteredBy]
+        `INSERT INTO leaderboard (event_id, participant_id, score, team_no, entered_by)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (event_id, participant_id)
+         DO UPDATE SET score = $3, team_no = $4, entered_by = $5`,
+        [eventId, participantId, numScore, teamNo ?? null, enteredBy]
       );
     } catch (e) {
       if (e.code === '42703') {
+        // ✅ Fallback if columns don't exist
         await pool.query(
-          `INSERT INTO leaderboard (event_id, participant_id, score) VALUES ($1, $2, $3)
-           ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3`,
+          `INSERT INTO leaderboard (event_id, participant_id, score)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (event_id, participant_id)
+           DO UPDATE SET score = $3`,
           [eventId, participantId, numScore]
         );
       } else throw e;
     }
+
+    // ✅ Return updated leaderboard
     const r = await pool.query(
-      `SELECT l.participant_id, l.score, u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
+      `SELECT l.participant_id, l.score, l.team_no, u.name, u.leo_id, u.roll_no
+       FROM leaderboard l
+       JOIN users u ON u.id = l.participant_id
+       WHERE l.event_id = $1
+       ORDER BY l.score DESC`,
       [eventId]
     );
+
     res.json(r.rows.map(toLeaderboardRow));
   } catch (err) {
     if (handleDbError(err, res, 'leaderboard upsert')) return;
@@ -70,10 +90,15 @@ async function upsertScore(req, res) {
 async function getWinners(req, res) {
   try {
     const { eventId } = req.params;
+
     const r = await pool.query(
-      'SELECT participant_id FROM winners WHERE event_id = $1 ORDER BY rank ASC',
+      `SELECT participant_id
+       FROM winners
+       WHERE event_id = $1
+       ORDER BY rank ASC`,
       [eventId]
     );
+
     res.json(r.rows.map((row) => row.participant_id));
   } catch (err) {
     if (handleDbError(err, res, 'leaderboard getWinners')) return;
@@ -88,17 +113,35 @@ async function completeEvent(req, res) {
     const { winnerParticipantIds } = req.body || {};
     const ids = Array.isArray(winnerParticipantIds) ? winnerParticipantIds : [];
 
-    await pool.query('UPDATE events SET status = $1 WHERE id = $2', ['completed', eventId]);
-    await pool.query('DELETE FROM winners WHERE event_id = $1', [eventId]);
+    // ✅ Mark event completed
+    await pool.query(
+      `UPDATE events SET status = $1 WHERE id = $2`,
+      ['completed', eventId]
+    );
+
+    // ✅ Replace winners
+    await pool.query(`DELETE FROM winners WHERE event_id = $1`, [eventId]);
+
     for (let i = 0; i < ids.length; i++) {
-      await pool.query('INSERT INTO winners (event_id, participant_id, rank) VALUES ($1, $2, $3)', [eventId, ids[i], i + 1]);
+      await pool.query(
+        `INSERT INTO winners (event_id, participant_id, rank)
+         VALUES ($1, $2, $3)`,
+        [eventId, ids[i], i + 1]
+      );
     }
+
+    // ✅ Return updated event
     const r = await pool.query(
-      'SELECT id, title, description, date, time, venue, category, status, cost, rules, team_size, created_at FROM events WHERE id = $1',
+      `SELECT id, title, description, date, time, venue, category,
+              status, cost, rules, team_size, created_at
+       FROM events
+       WHERE id = $1`,
       [eventId]
     );
+
     const row = r.rows[0];
     if (!row) return res.status(404).json({ message: 'Event not found' });
+
     res.json({
       id: row.id,
       title: row.title,
@@ -123,24 +166,32 @@ async function completeEvent(req, res) {
 async function getScoreEnteredBy(req, res) {
   try {
     const { eventId } = req.params;
+
     let r;
     try {
       r = await pool.query(
-        `SELECT DISTINCT u.id, u.name FROM leaderboard l
+        `SELECT DISTINCT u.id, u.name
+         FROM leaderboard l
          JOIN users u ON u.id = l.entered_by
-         WHERE l.event_id = $1 AND l.entered_by IS NOT NULL
+         WHERE l.event_id = $1
+           AND l.entered_by IS NOT NULL
          ORDER BY u.name`,
         [eventId]
       );
     } catch (e) {
       if (e.code === '42703') {
-        console.log('Column entered_by does not exist yet. Run: ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS entered_by UUID REFERENCES users(id) ON DELETE SET NULL;');
+        console.log(
+          'Column entered_by does not exist yet. Run: ALTER TABLE leaderboard ADD COLUMN IF NOT EXISTS entered_by UUID REFERENCES users(id) ON DELETE SET NULL;'
+        );
         return res.json([]);
       }
       throw e;
     }
-    console.log(`Found ${r.rows.length} coordinators who entered scores for event ${eventId}`);
-    res.json(r.rows.map((row) => ({ id: row.id, name: row.name || 'Unknown' })));
+
+    res.json(r.rows.map((row) => ({
+      id: row.id,
+      name: row.name || 'Unknown',
+    })));
   } catch (err) {
     if (handleDbError(err, res, 'leaderboard getScoreEnteredBy')) return;
     console.error('leaderboard getScoreEnteredBy', err.message);
@@ -148,4 +199,10 @@ async function getScoreEnteredBy(req, res) {
   }
 }
 
-module.exports = { getLeaderboard, upsertScore, getWinners, completeEvent, getScoreEnteredBy };
+module.exports = {
+  getLeaderboard,
+  upsertScore,
+  getWinners,
+  completeEvent,
+  getScoreEnteredBy,
+};
