@@ -5,6 +5,7 @@ function toLeaderboardRow(row) {
   if (!row) return null;
   return {
     participantId: row.participant_id,
+    teamNo: row.team_no ?? undefined,
     name: row.name ?? undefined,
     leoId: row.leo_id ?? undefined,
     rollNo: row.roll_no ?? undefined,
@@ -16,7 +17,7 @@ async function getLeaderboard(req, res) {
   try {
     const { eventId } = req.params;
     const r = await pool.query(
-      `SELECT l.participant_id, l.score, u.name, u.leo_id, u.roll_no
+      `SELECT l.participant_id, l.score, l.team_no, u.name, u.leo_id, u.roll_no
        FROM leaderboard l
        JOIN users u ON u.id = l.participant_id
        WHERE l.event_id = $1
@@ -34,7 +35,7 @@ async function getLeaderboard(req, res) {
 async function upsertScore(req, res) {
   try {
     const { eventId } = req.params;
-    const { participantId, score } = req.body || {};
+    const { participantId, score, teamNo } = req.body || {};
     const enteredBy = req.user?.id || null;
     if (!participantId || score === undefined) return res.status(400).json({ message: 'participantId and score required' });
     const numScore = Number(score);
@@ -42,9 +43,11 @@ async function upsertScore(req, res) {
 
     try {
       await pool.query(
-        `INSERT INTO leaderboard (event_id, participant_id, score, entered_by) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (event_id, participant_id) DO UPDATE SET score = $3, entered_by = $4`,
-        [eventId, participantId, numScore, enteredBy]
+        `INSERT INTO leaderboard (event_id, participant_id, score, team_no, entered_by)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (event_id, participant_id)
+        DO UPDATE SET score = $3, team_no = $4, entered_by = $5`,
+        [eventId, participantId, numScore, teamNo, enteredBy]
       );
     } catch (e) {
       if (e.code === '42703') {
@@ -56,7 +59,7 @@ async function upsertScore(req, res) {
       } else throw e;
     }
     const r = await pool.query(
-      `SELECT l.participant_id, l.score, u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
+      `SELECT l.participant_id, l.score, l.team_no, u.name, u.leo_id, u.roll_no FROM leaderboard l JOIN users u ON u.id = l.participant_id WHERE l.event_id = $1 ORDER BY l.score DESC`,
       [eventId]
     );
     res.json(r.rows.map(toLeaderboardRow));
