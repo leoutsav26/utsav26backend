@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS leaderboard (
   event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   participant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   score DECIMAL(12,2) NOT NULL DEFAULT 0,
+  team_no DECIMAL(12,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(event_id, participant_id)
 );
