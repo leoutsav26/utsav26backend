@@ -148,4 +148,4 @@ async function getScoreEnteredBy(req, res) {
   }
 }
 
-module.exports = { getLeaderboard, upsertScore, getWinners, completeEvent, getScoreEnteredBy }; this is the leaderboard controller and my coordinator dashboard is import React, { useMemo, useState, useEffect } from "react";
+module.exports = { getLeaderboard, upsertScore, getWinners, completeEvent, getScoreEnteredBy }; 
